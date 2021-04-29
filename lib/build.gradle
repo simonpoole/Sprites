@@ -1,0 +1,266 @@
+// Project level build file starts here
+plugins {
+    id "org.sonarqube" version "3.0"
+}
+
+apply plugin: 'eclipse'
+apply plugin: 'com.android.library'
+apply plugin: 'maven-publish'
+apply plugin: 'signing'
+apply plugin: "jacoco"
+
+version = '0.0.0'
+def libName = "Sprite"
+
+task updateTranslations(type: Exec) {
+    if (System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('windows')) {
+        commandLine 'cmd', '/c', 'tx.exe', 'pull', '-a'
+    } else {
+        commandLine 'tx', 'pull', '-a'
+    }
+}
+updateTranslations.group = 'translation'
+updateTranslations.description = 'Update translations by executing the transifex tx utility'
+
+apply from: 'https://raw.githubusercontent.com/simonpoole/gradle-tasks/master/eclipse-android-3'
+// apply from: '../../gradle-tasks/eclipse-android-3'
+
+android {
+    compileSdkVersion 28
+
+    defaultConfig {
+        minSdkVersion 14
+        targetSdkVersion 28
+        versionCode 100
+        versionName "${project.version}"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        setProperty("archivesBaseName", "${libName}")
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    buildTypes {
+        debug {
+            testCoverageEnabled true
+        }
+    }
+
+    testOptions {
+        unitTests.all {
+            jacoco { includeNoLocationClasses = true }
+            testLogging {
+                events "passed", "skipped", "failed", "standardOut", "standardError"
+                outputs.upToDateWhen {false}
+                showStandardStreams = true
+            }
+        }
+    }
+    
+    lintOptions {
+        // checkReleaseBuilds false
+        // Or, if you prefer, you can continue to check for errors in release builds,
+        // but continue the build even when errors are found:
+        abortOnError false
+    }
+}
+
+ext {
+    androidxVersion = "1.0.0"
+    adb = android.getAdbExe().toString()
+}
+
+dependencies {
+    implementation "androidx.annotation:annotation:$androidxVersion"
+    implementation "androidx.core:core:$androidxVersion"
+    implementation "com.google.code.gson:gson:2.8.6"
+
+    testImplementation "junit:junit:4.13"
+    testImplementation 'org.robolectric:robolectric:4.4'
+    testImplementation 'androidx.test.ext:junit:1.1.1'
+    testImplementation 'androidx.test:rules:1.1.1'
+}
+
+android.libraryVariants.all { variant ->
+    task("generate${variant.name.capitalize()}Javadoc", type: Javadoc) {
+        description "Generates Javadoc for $variant.name."
+        group "Documentation"
+        source = variant.javaCompile.source
+        doFirst {
+            classpath = files(variant.javaCompile.classpath.files) + files(android.bootClasspath) + files(variant.javaCompile.destinationDir)
+        }
+        options.links("http://docs.oracle.com/javase/7/docs/api/");
+        options.links("http://d.android.com/reference/");
+        exclude '**/BuildConfig.java'
+        exclude '**/R.java'
+    }
+}
+
+afterEvaluate{
+
+    // this task will generate tasks for each test that was run in the last on device test
+    // it doesn't depend on it directly as that would require waiting for all the tests to execute first
+    // so the best strategy seems to simply refresh the build after the on device tests have been ran
+    // tests are split up over two categories depending if they failed or not
+    task generateTestTasks {
+        def fileRegex = "TEST.*\\.xml"
+        def fileList = new File(projectDir.getPath() +"/build/outputs/androidTest-results/connected//").listFiles().findAll { it.name ==~ /${fileRegex}/ }
+        if (!fileList.empty) {
+            def tests = (new XmlParser()).parse(fileList.get(0)) // assume all tests outputs are equivalent
+            tests.'testcase'.each { testcase ->
+                def toRun = testcase.@classname + "#" + testcase.@name
+                task ("run${toRun.capitalize()}",
+                dependsOn: ["installDebugAndroidTest"],
+                type: Exec) {
+                    if (testcase.failure.size() == 0) {
+                        group = 'sucessful tests'
+                    } else {
+                        group = "failed tests"
+                    }
+                    description = "Run test " + toRun
+                    // commandLine adb, 'shell', 'pm', 'list', 'instrumentation'
+                    commandLine adb, 'shell', 'am', 'instrument', '-w', '-e', 'class',  toRun, "ch.poole.android.sprite.test/android.support.test.runner.AndroidJUnitRunner"
+                    finalizedBy "uninstallDebugAndroidTest"
+                }
+            }
+        }
+    }
+    generateTestTasks.group = 'verification'
+    generateTestTasks.description = 'Generate tasks for individual tests'
+}
+
+sonarqube {
+    properties {
+        property "sonar.java.source","1.8"
+        property "sonar.sourceEncoding","UTF-8"
+        property "sonar.java.binaries", "build/intermediates/javac/debug/compileDebugJavaWithJavac/classes"
+        property "sonar.coverage.jacoco.xmlReportPaths","build/reports/jacoco/jacocoTestReport/jacocoTestReport.xml"
+    }
+}
+
+ext {
+    // hardwiring this is ugly but it does work
+    releaseSource = file('src/main/java/ch/poole/android/sprite')
+    releaseJavadoc = file('build/docs/javadoc')
+}
+
+task sourcesJar(type: Jar) {
+    from releaseSource
+    classifier = 'sources'
+}
+
+task javadocJar(type: Jar, dependsOn: 'generateReleaseJavadoc') {
+    classifier = 'javadoc'
+    from releaseJavadoc
+    //	options.encoding = 'UTF-8'
+}
+
+group "ch.poole"
+
+task replaceVersion {
+    doLast {
+        ant.replaceregexp(match:'ch\\.poole\\.\\android:sprite\\:([0-9\\.]+)', replace:"ch.poole.android:sprite:${version}", flags:'g', byline:true) {
+            fileset(dir: '..', includes: 'README.md')
+        }
+    }
+}
+build.dependsOn replaceVersion
+
+def coverageSourceDirs = ['src/main/java']
+
+// see https://github.com/gradle/gradle/issues/5184
+tasks.withType(Test) {
+    jacoco.includeNoLocationClasses = true
+    jacoco.excludes = ['jdk.internal.*']
+}
+
+task jacocoTestReport(type:JacocoReport, dependsOn: "testDebugUnitTest") {
+    group = "Verification"
+
+    description = "Generate Jacoco coverage reports"
+
+    classDirectories.from = fileTree(
+            dir: 'build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/',
+            excludes: ['**/R.class', '**/R$*.class', '**/*$ViewInjector*.*', '**/BuildConfig.*', '**/Manifest*.*'])
+
+    additionalSourceDirs.from = files(coverageSourceDirs)
+    sourceDirectories.from = files(coverageSourceDirs)
+    executionData.from     = fileTree(
+            dir     : "$buildDir",
+            include : ['jacoco/testDebugUnitTest.exec', 'outputs/code-coverage/connected/*coverage.ec', 'spoon-output/currentDebug/coverage/merged-coverage.ec'])
+    reports {
+        xml.enabled = true
+        html.enabled = true
+    }
+
+    sourceDirectories.from = files(coverageSourceDirs)
+}
+
+ext {
+    repoUrl = 'https://github.com/simonpoole/Sprite.git'
+    spdxId = 'MIT'
+}
+
+publishing {
+    publications {
+        sprite(MavenPublication) {
+            groupId 'ch.poole.android'
+            artifactId 'sprite'
+            artifact sourcesJar 
+            artifact javadocJar 
+			artifact("$buildDir/outputs/aar/sprite-${project.version}.aar")
+			
+			pom {
+                name = artifactId
+                description = 'This is an Android support for Sprites'    
+                url = 'https://github.com/simonpoole/Sprite'
+                scm {
+                    url = repoUrl
+                }
+                licenses {
+                    license {
+                        name = spdxId
+                        url = 'https://raw.githubusercontent.com/simonpoole/Sprite/master/LICENCE.txt'
+                    }
+                }
+                developers {
+                    developer {
+                        name = 'Simon Poole'
+                    }
+                }
+            }
+			//The publication doesn't know about our dependencies, so we have to manually add them to the pom
+			// see https://stackoverflow.com/questions/24743562/gradle-not-including-dependencies-in-published-pom-xml
+			pom.withXml {
+    			def dependenciesNode = asNode().appendNode('dependencies')
+
+    			//Iterate over the compile dependencies (we don't want the test ones), adding a <dependency> node for each
+    			configurations.implementation.allDependencies.each {
+        		def dependencyNode = dependenciesNode.appendNode('dependency')
+        			dependencyNode.appendNode('groupId', it.group)
+        			dependencyNode.appendNode('artifactId', it.name)
+        			dependencyNode.appendNode('version', it.version)
+    			}
+			}
+
+            repositories {
+                maven {
+                    name = 'sonatype'
+                    credentials {
+                        username System.getenv('SONATYPE_USER')
+                        password System.getenv('SONATYPE_PASSWORD')
+                    }
+                    def releasesRepoUrl = "https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/"
+                    def snapshotsRepoUrl = "https://s01.oss.sonatype.org/content/repositories/snapshots/"
+                    url = version.endsWith('SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
+                }
+            }
+        }
+    }
+}
+
+signing {
+    sign publishing.publications.sprite
+}

@@ -1,0 +1,21 @@
+buildscript {
+    repositories {
+        mavenCentral()
+        maven { url "https://maven.google.com" }
+        google()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:3.2.1'
+        classpath 'com.github.ksoichiro:gradle-eclipse-aar-plugin:0.3.1'
+    }
+}
+
+allprojects {
+	repositories {
+		mavenCentral()
+        maven { url "https://maven.google.com" }
+        mavenLocal()
+        google()
+        jcenter()
+    }
+}
