@@ -9,8 +9,8 @@ apply plugin: 'maven-publish'
 apply plugin: 'signing'
 apply plugin: "jacoco"
 
-version = '0.0.0'
-def libName = "Sprite"
+version = '0.0.4'
+def libName = "sprites"
 
 task updateTranslations(type: Exec) {
     if (System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('windows')) {
@@ -121,7 +121,7 @@ afterEvaluate{
                     }
                     description = "Run test " + toRun
                     // commandLine adb, 'shell', 'pm', 'list', 'instrumentation'
-                    commandLine adb, 'shell', 'am', 'instrument', '-w', '-e', 'class',  toRun, "ch.poole.android.sprite.test/android.support.test.runner.AndroidJUnitRunner"
+                    commandLine adb, 'shell', 'am', 'instrument', '-w', '-e', 'class',  toRun, "ch.poole.android.sprites.test/android.support.test.runner.AndroidJUnitRunner"
                     finalizedBy "uninstallDebugAndroidTest"
                 }
             }
@@ -142,7 +142,7 @@ sonarqube {
 
 ext {
     // hardwiring this is ugly but it does work
-    releaseSource = file('src/main/java/ch/poole/android/sprite')
+    releaseSource = file('src/main/java/ch/poole/android/sprites')
     releaseJavadoc = file('build/docs/javadoc')
 }
 
@@ -157,11 +157,11 @@ task javadocJar(type: Jar, dependsOn: 'generateReleaseJavadoc') {
     //	options.encoding = 'UTF-8'
 }
 
-group "ch.poole"
+group "ch.poole.android"
 
 task replaceVersion {
     doLast {
-        ant.replaceregexp(match:'ch\\.poole\\.\\android:sprite\\:([0-9\\.]+)', replace:"ch.poole.android:sprite:${version}", flags:'g', byline:true) {
+        ant.replaceregexp(match:'ch\\.poole\\.\\android:sprites\\:([0-9\\.]+)', replace:"ch.poole.android:sprites:${version}", flags:'g', byline:true) {
             fileset(dir: '..', includes: 'README.md')
         }
     }
@@ -199,30 +199,30 @@ task jacocoTestReport(type:JacocoReport, dependsOn: "testDebugUnitTest") {
 }
 
 ext {
-    repoUrl = 'https://github.com/simonpoole/Sprite.git'
+    repoUrl = 'https://github.com/simonpoole/Sprites.git'
     spdxId = 'MIT'
 }
 
 publishing {
     publications {
-        sprite(MavenPublication) {
+        sprites(MavenPublication) {
             groupId 'ch.poole.android'
-            artifactId 'sprite'
+            artifactId 'sprites'
             artifact sourcesJar 
             artifact javadocJar 
-			artifact("$buildDir/outputs/aar/sprite-${project.version}.aar")
+			artifact("$buildDir/outputs/aar/sprites-${project.version}.aar")
 			
 			pom {
                 name = artifactId
-                description = 'This is an Android support for Sprites'    
-                url = 'https://github.com/simonpoole/Sprite'
+                description = 'Android support for Sprites'    
+                url = 'https://github.com/simonpoole/Sprites'
                 scm {
                     url = repoUrl
                 }
                 licenses {
                     license {
                         name = spdxId
-                        url = 'https://raw.githubusercontent.com/simonpoole/Sprite/master/LICENCE.txt'
+                        url = 'https://raw.githubusercontent.com/simonpoole/Sprites/main/LICENCE.txt'
                     }
                 }
                 developers {
@@ -262,5 +262,5 @@ publishing {
 }
 
 signing {
-    sign publishing.publications.sprite
+    sign publishing.publications.sprites
 }

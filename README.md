@@ -7,9 +7,9 @@ Tiny library that provides sprite support.
 
 ``` java
     ...
-	Sprite sprite = new Sprite(sheetInputStream, imageInputStream);
+	Sprites sprites = new Sprites(context, sheetInputStream, imageInputStream);
 	....
-	Bitmap icon = sprite("an icon");
+	Bitmap icon = sprites.get("an icon");
 ```
 
 
@@ -19,18 +19,16 @@ Add the following to your *build.gradle* file(s):
 
 ``` groovy
 repositories {
-    maven {
-    ..... not published yet ......
-    }
+    mavenCentral()
 }
 ```
 
 ``` groovy
 dependencies {
-    compile "ch.poole.android:sprite:0.0.0"
+    implementation 'ch.poole.android:sprites:0.0.4'
 }
 ```
 
 ## Legal
 
-Maki icons are from https://labs.mapbox.com/maki-icons/, the sprite icon sheet and image are from https://github.com/maputnik/osm-liberty 
+Sources used for testing: Maki icons are from https://labs.mapbox.com/maki-icons/, the sprite icon sheet and image are from https://github.com/maputnik/osm-liberty 
